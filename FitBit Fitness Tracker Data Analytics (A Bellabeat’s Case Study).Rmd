@@ -1,0 +1,372 @@
+---
+title: 'FitBit Fitness Tracker Data Analytics: A Bellabeat’s Case Study'
+author: "Renz Linga"
+date: "2022-10-17"
+geometry: "left=1.27cm,right=1.27cm,top=1.27cm,bottom=1.27cm"
+output:
+  html_document: default
+  pdf_document: default
+urlcolor: blue
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# 1. Summary of the business task
+
+This is a case study for the Google Data Analytics Professional Certification offered on Coursera. This capstone study uses the smart device usage data in order to gain insight into how consumers use non-Bellabeat smart devices. One of Bellabeat’s competitor products, the FitBit, specifically designed for women and now owned by Google, is then selected to apply these insights in making high-level recommendations and marketing strategy. The data came from thirty (30) Fitbit users who consented to publish their data on Kaggle public dataset through a distributed survey via Amazon Mechanical Turk between April 12, 2016, and May 12, 2016. Data includes minute-level output for physical activity, heart rate, and sleep monitoring.
+
+![](C:/Users/user/Documents/R Programming/My Data Analytics Case Studies/Fitbit Watch.jpeg){width=60%}
+
+The Fitbit Smart Watch (© AQSale.com).
+
+## The Stakeholders
+* **Urška Sršen**: Chief Creative Officer and cofounder of Bellabeat 
+* **Sando Mur**: Mathematician and cofounder of Bellabeat
+* **Bellabeat marketing analytics team**: A data analytics team responsible for collection, analysis, and reporting of data that guides Bellabeat’s marketing strategy
+
+## The Bellabeat Products and Services
+* **Bellabeat app**
+* **Leaf**
+* **Time**
+* **Spring**
+* **Bellabeat membership**
+
+Urška Sršen wants answers to the following questions to unlock new growth opportunities for the company:
+
+a. What are some trends in smart device usage?
+b. How could these trends apply to Bellabeat customers?       
+c. How could these trends help influence Bellabeat marketing strategy?
+
+
+# 2. Description of all data sources used
+
+The [FitBit Fitness Tracker Data](https://www.kaggle.com/datasets/arashnic/fitbit) (CC0: Public Domain, dataset made available through Mobius) Kaggle dataset from 30 FitBit users contains personal fitness tracker. It also contains information about daily activity, steps, and heart rate that can be used to explore users’ habits.
+
+All data is stored in CSV files. Some data is in wide format (such as the dailyActivity_merged.csv) and in long format (such as the sleepDay_merged.csv), and the users were anonymized using only their ID. This third-party data has low credibility because it was collected by Amazon Mechanical Turk, but it is highly reliable with a perfect usability score of 10.00. The issue with this Fitbit dataset is that there are only 30 users, which is a very small sample size with unknown demographics, particularly gender. The insights that will be gained from this dataset may not be completely compatible with Bellabeat's feminine products.
+
+
+# 3. Documentation of any cleaning or manipulation of data
+
+This statistical analysis is focused on the following datasets using R Markdown and Code Chunks:
+* dailyActivity_merged.csv
+* dailySteps_merged.csv
+* sleepDay_merged.csv
+* weightLogInfo_merged.csv
+
+## Loading common libraries
+```{r}
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(dplyr)
+library(knitr)
+library(readr)
+library(rmarkdown)
+library(janitor)
+library(skimr)
+library(tibble)
+library(yaml)
+library(viridis)
+```
+
+## Loading and renaming the CSV files
+```{r}
+daily_activity <- read_csv("C:/Users/user/Documents/R Programming/My Data Analytics Case Studies/Fitabase Data 4.12.16-5.12.16/dailyActivity_merged.csv") %>%
+  clean_names()
+
+daily_steps <- read_csv("C:/Users/user/Documents/R Programming/My Data Analytics Case Studies/Fitabase Data 4.12.16-5.12.16/dailySteps_merged.csv") %>% 
+  clean_names()
+
+daily_sleep <- read_csv("C:/Users/user/Documents/R Programming/My Data Analytics Case Studies/Fitabase Data 4.12.16-5.12.16/sleepDay_merged.csv") %>% 
+  clean_names()
+
+hourly_intensities <- read_csv("C:/Users/user/Documents/R Programming/My Data Analytics Case Studies/Fitabase Data 4.12.16-5.12.16/hourlyIntensities_merged.csv") %>% 
+  clean_names()
+```
+
+## Exploring rows, columns, and data structures
+```{r}
+glimpse(daily_activity)
+glimpse(daily_steps)
+glimpse(daily_sleep)
+glimpse(hourly_intensities)
+```
+
+## Exploring summary statistics
+```{r}
+daily_activity %>%
+  select(total_steps, total_distance, calories) %>%
+  summary()
+
+daily_steps %>%
+  select(step_total) %>%
+  summary()
+
+daily_sleep %>%
+  select(total_sleep_records, total_minutes_asleep, total_time_in_bed) %>%
+  summary()
+
+hourly_intensities %>%
+  select(total_intensity, average_intensity) %>%
+  summary()
+```
+
+## Counting IDs
+```{r}
+n_distinct(daily_activity$id)
+n_distinct(daily_steps$id)
+n_distinct(daily_sleep$id)
+n_distinct(hourly_intensities$id)
+```
+
+## Checking for missing values
+```{r}
+sum(is.na(daily_activity))
+sum(is.na(daily_steps))
+sum(is.na(daily_sleep))
+sum(is.na(hourly_intensities))
+
+sum(duplicated(daily_activity))
+sum(duplicated(daily_steps))
+sum(duplicated(daily_sleep))
+sum(duplicated(hourly_intensities))
+```
+
+Upon checking, there are 33 distinct IDs found, contrary to the dataset's description that there are only 30 users. There are also 3 duplicates in the daily_sleep column.
+```{r}
+# Removing duplicates
+daily_sleep <- daily_sleep %>%
+  distinct()
+```
+
+```{r}
+# Rechecking duplicates
+sum(duplicated(daily_sleep))
+```
+
+## Matching columns to be joined later and creating day_of_the_week column
+The date name and format will be modified so that the dates are all uniform among the three data frames. Some column names will also be renamed to a more understandable format.
+```{r}
+daily_activity_modified <- select(daily_activity, id, activity_date, total_steps, total_distance,
+                                  tracker_distance, logged_activities_distance, very_active_minutes,
+                                  fairly_active_minutes, lightly_active_minutes,
+                                  calories, sedentary_minutes) %>%
+  rename(date = activity_date) %>%
+  mutate(date = mdy(date)) %>%
+  mutate(day_of_the_week = weekdays(date)) %>%
+  rename(total_distance_km = total_distance) %>%
+  rename(tracker_distance_km = tracker_distance) %>%
+  rename(logged_distance_km = logged_activities_distance) %>%
+  rename(very_active_mins = very_active_minutes) %>%
+  rename(fairly_active_mins = fairly_active_minutes) %>%
+  rename(sedentary_mins = sedentary_minutes) %>%
+  rename(lightly_active_mins = lightly_active_minutes)
+
+daily_sleep_modified <- select(daily_sleep, id, sleep_day, total_minutes_asleep, total_time_in_bed) %>%
+  rename(date = sleep_day) %>%
+  separate(date, into = c('date', 'hour', 'AM_PM'), sep = ' ') %>%
+  mutate(date = mdy(date)) %>%
+  mutate(day_of_the_week = weekdays(date)) %>%
+  rename(time_asleep_mins = total_minutes_asleep) %>%
+  rename(time_in_bed_mins = total_time_in_bed)
+
+hourly_intensities_modified <- select(hourly_intensities, id, activity_hour, total_intensity,
+                                      average_intensity) %>%
+  rename(date = activity_hour) %>%
+  separate(date, into = c('date', 'hour', 'AM_PM'), sep = ' ') %>%
+  mutate(date = mdy(date)) %>%
+  mutate(day_of_the_week = weekdays(date))
+```
+
+```{r}
+# Confirming that the columns are modified correctly
+glimpse(daily_activity_modified)
+glimpse(daily_sleep_modified)
+glimpse(hourly_intensities_modified)
+```
+
+## Joining the now compatible tables
+The data frames **daily_activity_modified**, **daily_sleep_modified**, and **hourly_intensities_modified** all have columns id and date which can be used to join them.
+```{r}
+daily_data_combined <- left_join(daily_activity_modified, daily_sleep_modified)
+glimpse(daily_data_combined)
+
+daily_data_completed <- left_join(daily_data_combined, hourly_intensities_modified)
+glimpse(daily_data_completed)
+
+n_distinct(daily_data_completed$id)
+sum(is.na(daily_data_completed))
+
+daily_data_completed <- daily_data_completed %>% 
+  mutate_if(is.numeric, ~replace(., is.na(.), 0))
+
+sum(is.na(daily_data_completed))
+glimpse(daily_data_completed)
+n_distinct(daily_data_completed$id)
+head(daily_data_completed)
+
+daily_data_completed$day_of_the_week <- factor(daily_data_completed$day_of_the_week,
+                                               levels = c('Monday', 'Tuesday', 'Wednesday',
+                                                          'Thursday', 'Friday', 'Saturday',
+                                                          'Sunday'))
+# Checking for errors
+head(daily_data_completed)
+```
+
+
+# 4. Summary of analysis 
+The data is now cleaned and transformed. It is now ready for analysis to gain insight into how Fitbit users are interacting with their fitness tracking device.
+
+## Number of log-in times per user weekly
+```{r}
+ggplot(data=daily_data_completed, aes(x=day_of_the_week, fill=day_of_the_week)) +
+  geom_bar(stat='count', color='black') +
+  theme(plot.title=element_text(hjust=1, lineheight=1, face='bold'),
+        axis.text.x=element_text(angle=90), axis.text.y=element_text(angle=90)) +
+  facet_wrap(~id) + labs(x='Day of the Week', y='Frequency',
+       title='Figure 1. Number of log-in times per user weekly')
+```
+I noticed that most of the users log in their activities most of the days of the week.
+
+## Distance traveled vs. Calories burned
+It is interesting to see the relationship between the distance traveled and calories burned. First, I will look at the summary statistics to include the averages in the ggplot.
+```{r}
+daily_data_completed %>%  
+  select(total_distance_km, calories) %>%
+  summary()
+
+ggplot(data=daily_data_completed,
+       mapping=aes(x = total_distance_km, y = calories, color = total_intensity)) +
+  geom_point() + geom_smooth() + scale_color_gradientn(colours = topo.colors(10)) +
+  geom_hline(yintercept=2304, color='black', size=0.5) +
+  geom_vline(xintercept=5.490, color='black', size=0.5) +
+  geom_text(aes(x=8, y=2500, label='Average'), color='black', size=4) +
+  theme(plot.title=element_text(hjust=0.5, lineheight=0.8, face='bold')) +
+  labs(x='Total Distance (km)', y='Calories Burned',
+       title='Figure 2. Calories burned per distance kilometer')
+```
+
+Most of the travel activities are at a low intensity level. I will now plot the relationship between the steps taken and calories burned.
+```{r}
+ggplot(data=daily_data_completed,
+       mapping=aes(x=calories, y=total_steps, color=total_distance_km)) +
+  geom_point() + geom_smooth() +
+  scale_color_gradientn(colours=topo.colors(10)) +
+  theme(plot.title=element_text(hjust=0.5, lineheight=0.8, face='bold')) +
+  labs(x='Calories', y='Total Steps', title='Figure 3. Calories burned per step')
+```
+
+The National Sleep Foundation guidelines advise that healthy adults need between 7 and 9 hours of sleep per night. I grouped the sleep duration of users into 4 categories. I will then convert minutes into hours to look at their sleep duration in hours. Those with zero sleep minutes for a day are considered inactive and did not record their sleep. The time conversions are 7x60 = 420 minutes and 9x60 = 540.
+```{r}
+daily_data_completed <- daily_data_completed %>%
+  mutate(sleep_duration = case_when(time_asleep_mins == 0 ~ 'did not record sleep',
+                                time_asleep_mins < 420 & time_asleep_mins > 0 ~ 'less than 7 hours',
+                                time_asleep_mins >= 420 & time_asleep_mins <= 540 ~ '7 to 9 hours',
+                                time_asleep_mins > 540 ~ 'more than 9 hours'))
+```
+
+```{r}
+# Checking if sleep durations were categorized correctly
+head(daily_data_completed[c('time_asleep_mins', 'sleep_duration')], 6)
+summary(daily_data_completed['time_asleep_mins'], na.rm = FALSE)
+```
+
+After grouping the sleep durations, I then took the percentage of each sleep type with the total rows of the daily_data_completed. I then plotted the sleep distribution using ggplot.
+```{r}
+daily_data_completed %>%
+  group_by(sleep_duration) %>%
+  summarise(counts=n(),
+            percentage=n()/nrow(daily_data_completed)) %>%
+  ggplot(aes(x='', y=percentage, fill=sleep_duration)) +
+  geom_bar(width=2, stat='identity', color='white') +
+  coord_polar('y', start=0) +
+  theme_minimal() +
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        panel.border=element_blank(), 
+        panel.grid=element_blank(), 
+        axis.ticks=element_blank(),
+        axis.text.x=element_blank(),
+        plot.title=element_text(hjust = 0.5, size=14, face="bold")) +
+  scale_fill_manual(values=c('#3cba54', '#4885ed', '#db3236', '#f4c20d')) +
+  geom_text(aes(label=paste0(round(percentage*100), '%')), position=position_stack(vjust=0.5)) +
+  labs(title="Figure 4. Breakdown of Fitbit users' hours of sleep")
+```
+
+## Average Sedentary Minutes of Fitbit Users
+```{r}
+daily_data_completed %>%
+  group_by(day_of_the_week) %>%
+  summarise(avg_sedentary_mins=mean(sedentary_mins)) %>%
+  ggplot(aes(x=reorder(day_of_the_week, avg_sedentary_mins), y=avg_sedentary_mins,
+             fill=avg_sedentary_mins)) +
+  geom_bar(width=0.2, stat='identity') + geom_col(width=0.4) + coord_flip() + 
+  labs(title='Figure 5. Average Sedentary Minutes of Fitbit Users',
+       x=element_blank(), y='Average Sedentary Minutes')
+```
+
+Fitbit users are mostly sedentary during Monday and mostly active during Thursday.
+
+
+# 5. Key findings and supporting visualizations
+## Insights gained from Fitbit dataset smart device usage:
+* Most Fitbit users consistently recorded their activities
+* 56% of total sleeps were not recorded by Fitbit users. I suspect that this is because most users tend to remove their smart watch when going to sleep.
+* Fitbit users are mostly sedentary on Mondays and highly active on Thursdays
+
+## Summary of Visualizations Useful for Bellabeat Marketing
+```{r, echo=FALSE}
+ggplot(data=daily_data_completed, aes(x=day_of_the_week, fill=day_of_the_week)) +
+  geom_bar(stat='count', color='black') +
+  theme(plot.title=element_text(hjust=1, lineheight=1, face='bold'),
+        axis.text.x=element_text(angle=90), axis.text.y=element_text(angle=90)) +
+  facet_wrap(~id) + labs(x='Day of the Week', y='Frequency',
+       title='Figure 1. Number of log-in times per user weekly')
+```
+
+```{r, echo=FALSE}
+daily_data_completed %>%
+  group_by(sleep_duration) %>%
+  summarise(counts=n(),
+            percentage=n()/nrow(daily_data_completed)) %>%
+  ggplot(aes(x='', y=percentage, fill=sleep_duration)) +
+  geom_bar(width=2, stat='identity', color='white') +
+  coord_polar('y', start=0) +
+  theme_minimal() +
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        panel.border=element_blank(), 
+        panel.grid=element_blank(), 
+        axis.ticks=element_blank(),
+        axis.text.x=element_blank(),
+        plot.title=element_text(hjust = 0.5, size=14, face="bold")) +
+  scale_fill_manual(values=c('#3cba54', '#4885ed', '#db3236', '#f4c20d')) +
+  geom_text(aes(label=paste0(round(percentage*100), '%')), position=position_stack(vjust=0.5)) +
+  labs(title="Figure 4. Breakdown of Fitbit users' hours of sleep")
+```
+
+```{r, echo=FALSE}
+daily_data_completed %>%
+  group_by(day_of_the_week) %>%
+  summarise(avg_sedentary_mins=mean(sedentary_mins)) %>%
+  ggplot(aes(x=reorder(day_of_the_week, avg_sedentary_mins), y=avg_sedentary_mins,
+             fill=avg_sedentary_mins)) +
+  geom_bar(width=0.2, stat='identity') + geom_col(width=0.4) + coord_flip() + 
+  labs(title='Figure 5. Average Sedentary Minutes of Fitbit Users',
+       x=element_blank(), y='Average Sedentary Minutes')
+```
+
+# 6. Top high-level content recommendations based on analysis
+## Applying insights to business
+The insights from the Fitbit dataset can be applied specifically to Bellabeat's Time, a wellness watch with the look of a classic timepiece with smart technology to track user activity, stress, and sleep. The Time watch is connected to the Bellabeat app, which provides insights into a user's daily wellness.
+
+Based on the sleep data, the Bellabeat marketing team can suggest redesigning the Time smart watch to be just like a bracelet, with a sleep-friendly design, in which it will not be necessary to remove it while sleeping.
+
+The users need to be inspired by the benefits to well-being of getting optimal sleep of 7 to 9 hours, in which case the Time wellness watch can be useful in tracking their sleep. Bellabeat can also promote the benefits of consistency in using Time to get a more accurate picture of the user's well-being.
+
+```{r}
+
+```
